@@ -303,7 +303,7 @@ function applyFilters() {
     const { native, invasive } = classify(o);
     // Each active pill must match (AND logic)
     if (activeF.has('native')      && native !== true)  return false;
-    if (activeF.has('nonnative')   && (native !== false || invasive)) return false;
+    if (activeF.has('nonnative')   && native !== false) return false;
     if (activeF.has('invasive')    && !invasive)        return false;
     if (activeF.has('noninvasive') && invasive)         return false;
     return true;
