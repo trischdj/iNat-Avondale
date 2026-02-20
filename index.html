@@ -301,11 +301,12 @@ function applyFilters() {
     if (q && !cm.includes(q) && !sc.includes(q)) return false;
     if (activeF.size === 0) return true;
     const { native, invasive } = classify(o);
-    if (activeF.has('native')      && native === true)  return true;
-    if (activeF.has('nonnative')   && native === false) return true;
-    if (activeF.has('invasive')    && invasive)         return true;
-    if (activeF.has('noninvasive') && !invasive)        return true;
-    return false;
+    // Each active pill must match (AND logic)
+    if (activeF.has('native')      && native !== true)  return false;
+    if (activeF.has('nonnative')   && (native !== false || invasive)) return false;
+    if (activeF.has('invasive')    && !invasive)        return false;
+    if (activeF.has('noninvasive') && invasive)         return false;
+    return true;
   });
 
   // Sort
