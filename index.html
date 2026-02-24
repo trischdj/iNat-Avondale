@@ -123,6 +123,7 @@ select.ss{padding:6px 9px;border:1.5px solid var(--border);border-radius:8px;fon
   header,.bar,.grid,.pager{padding-left:14px;padding-right:14px}
   .htxt p{display:none}
 }
+.leaflet-div-icon{background:none!important;border:none!important}
 </style>
 </head>
 <body>
@@ -181,13 +182,12 @@ select.ss{padding:6px 9px;border:1.5px solid var(--border);border-radius:8px;fon
 <div id="tab-map">
   <div id="map"></div>
   <div class="mleg">
-    <h4>Nativity Score</h4>
-    <div class="lr"><div class="lc" style="background:#1a7a2e"></div><span><strong>Native rich</strong></span></div>
-    <div class="lr"><div class="lc" style="background:#56ab2f"></div><span><strong>Native majority</strong></span></div>
-    <div class="lr"><div class="lc" style="background:#f9c74f"></div><span><strong>Mixed</strong></span></div>
-    <div class="lr"><div class="lc" style="background:#f3722c"></div><span><strong>Non-native heavy</strong></span></div>
-    <div class="lr"><div class="lc" style="background:#b83232"></div><span><strong>Invasive dominant</strong></span></div>
-    <div class="lr" style="margin-top:6px"><div class="lc" style="background:#aaa;width:12px;height:12px"></div><span style="font-size:.7rem">Size = observation count</span></div>
+    <h4>Dominant Category</h4>
+    <div class="lr"><svg width="16" height="16" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6.5" fill="#2e7d32" stroke="#1b5e20" stroke-width="1.5"/></svg><span><strong>Native</strong></span></div>
+    <div class="lr"><svg width="16" height="16" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="1.5" width="13" height="13" fill="#7a5800" stroke="#4a3500" stroke-width="1.5"/></svg><span><strong>Non-native</strong></span></div>
+    <div class="lr"><svg width="16" height="16" xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="lc-tri"><polygon points="8,1 15,15 1,15"/></clipPath></defs><polygon points="8,1 15,15 1,15" fill="#b83232" stroke="#7a0000" stroke-width="1.5"/><g clip-path="url(#lc-tri)"><line x1="-8" y1="0" x2="8" y2="16" stroke="rgba(255,255,255,.45)" stroke-width="1.2"/><line x1="-3" y1="0" x2="13" y2="16" stroke="rgba(255,255,255,.45)" stroke-width="1.2"/><line x1="2" y1="0" x2="18" y2="16" stroke="rgba(255,255,255,.45)" stroke-width="1.2"/><line x1="7" y1="0" x2="23" y2="16" stroke="rgba(255,255,255,.45)" stroke-width="1.2"/></g></svg><span><strong>Invasive</strong> (hatched)</span></div>
+    <div class="lr"><svg width="16" height="16" xmlns="http://www.w3.org/2000/svg"><polygon points="8,1 15,8 8,15 1,8" fill="#5c6bc0" stroke="#283593" stroke-width="1.5"/></svg><span><strong>Mixed / unknown</strong></span></div>
+    <div class="lr" style="margin-top:6px"><svg width="12" height="12" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="6" r="5" fill="#aaa" opacity=".6"/></svg><span style="font-size:.7rem">Size = observation count</span></div>
   </div>
   <div class="mip" id="mip">
     <button class="xbtn" onclick="closeMip()">✕</button>
@@ -450,23 +450,59 @@ function renderMap() {
     if (!cells[k]) cells[k] = {lat:Math.round(lat*300)/300, lng:Math.round(lng*300)/300, obs:[]};
     cells[k].obs.push(o);
   });
+  let ci = 0;
   Object.values(cells).forEach(cell => {
-    let nat=0, inv=0;
+    let nat=0, nnat=0, inv=0;
     const sp = {};
     cell.obs.forEach(o => {
       const {native, invasive} = classify(o);
-      if (native)  nat++;
+      if (native === true)  nat++;
+      if (native === false) nnat++;
       if (invasive) inv++;
       const k = o.taxon?.name||'Unknown';
       if (!sp[k]) sp[k]={common:o.taxon?.preferred_common_name||k,sci:k,native,invasive,count:0};
       sp[k].count++;
     });
     const tot = cell.obs.length;
-    const nr = tot ? nat/tot : 0, ir = tot ? inv/tot : 0;
-    const color = ir>.4?'#b83232': nr>.75?'#1a7a2e': nr>.5?'#56ab2f': nr>.25?'#f9c74f': nr>0?'#f3722c':'#b83232';
-    const radius = Math.max(9, Math.min(34, 7+Math.sqrt(tot)*4));
-    const dk = (h=>{const n=parseInt(h.slice(1),16);const r=Math.max(0,(n>>16)-25),g=Math.max(0,((n>>8)&0xff)-25),b=Math.max(0,(n&0xff)-25);return'#'+((r<<16)|(g<<8)|b).toString(16).padStart(6,'0')})(color);
-    const m = L.circleMarker([cell.lat,cell.lng],{radius,fillColor:color,color:dk,weight:1.5,opacity:.9,fillOpacity:.8}).addTo(clayer);
+    const nr = tot ? nat/tot : 0;
+    const ir = tot ? inv/tot : 0;
+    const nnr = tot ? nnat/tot : 0;
+    const sz = Math.max(14, Math.min(42, 10+Math.sqrt(tot)*4));
+    const h = sz/2;
+    const id = ci++;
+
+    // Shape by dominant category
+    let shape;
+    if (ir > 0.35)      shape = 'triangle'; // invasive dominant → hatched triangle
+    else if (nr > 0.6)  shape = 'circle';   // native dominant → circle
+    else if (nnr > 0.5) shape = 'square';   // non-native dominant → square
+    else                shape = 'diamond';  // mixed / unknown → diamond
+
+    const hatchLines = () => {
+      let l = '';
+      for (let x = -sz; x < sz*2; x += 5)
+        l += `<line x1="${x}" y1="0" x2="${x+sz}" y2="${sz}" stroke="rgba(255,255,255,.45)" stroke-width="1.2"/>`;
+      return l;
+    };
+
+    let defs = '', body = '';
+    if (shape === 'circle') {
+      body = `<circle cx="${h}" cy="${h}" r="${h-2}" fill="#2e7d32" stroke="#1b5e20" stroke-width="1.5" fill-opacity=".88"/>`;
+    } else if (shape === 'square') {
+      body = `<rect x="2" y="2" width="${sz-4}" height="${sz-4}" fill="#7a5800" stroke="#4a3500" stroke-width="1.5" fill-opacity=".88"/>`;
+    } else if (shape === 'triangle') {
+      const pts = `${h},2 ${sz-2},${sz-2} 2,${sz-2}`;
+      defs = `<defs><clipPath id="tc${id}"><polygon points="${pts}"/></clipPath></defs>`;
+      body = `<polygon points="${pts}" fill="#b83232" stroke="#7a0000" stroke-width="1.5" fill-opacity=".88"/>
+              <g clip-path="url(#tc${id})">${hatchLines()}</g>`;
+    } else {
+      const pts = `${h},2 ${sz-2},${h} ${h},${sz-2} 2,${h}`;
+      body = `<polygon points="${pts}" fill="#5c6bc0" stroke="#283593" stroke-width="1.5" fill-opacity=".88"/>`;
+    }
+
+    const svg = `<svg width="${sz}" height="${sz}" xmlns="http://www.w3.org/2000/svg">${defs}${body}</svg>`;
+    const icon = L.divIcon({className:'', html:svg, iconSize:[sz,sz], iconAnchor:[h,h]});
+    const m = L.marker([cell.lat,cell.lng],{icon}).addTo(clayer);
     m.bindTooltip(`<strong>${tot}</strong> obs · ${nat} native · ${inv} invasive`,{sticky:true});
     m.on('click',()=>showMip(tot,nat,inv,Object.values(sp)));
   });
